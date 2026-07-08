@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,19 +20,61 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func shouldRewriteMappedResponseModel(info *relaycommon.RelayInfo) bool {
+	return info != nil &&
+		info.ChannelMeta != nil &&
+		info.ChannelMeta.IsModelMapped &&
+		info.ChannelMeta.UpstreamModelName != ""
+}
+
+func clientVisibleResponseModel(info *relaycommon.RelayInfo, fallback string) string {
+	if shouldRewriteMappedResponseModel(info) {
+		return info.ChannelMeta.UpstreamModelName
+	}
+	return fallback
+}
+
+func rewriteResponseModelField(data []byte, model string) ([]byte, error) {
+	if model == "" {
+		return data, nil
+	}
+	var body map[string]json.RawMessage
+	if err := common.Unmarshal(data, &body); err != nil {
+		return nil, err
+	}
+	if _, ok := body["model"]; !ok {
+		return data, nil
+	}
+	modelJSON, err := common.Marshal(model)
+	if err != nil {
+		return nil, err
+	}
+	body["model"] = modelJSON
+	return common.Marshal(body)
+}
+
 func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, forceFormat bool, thinkToContent bool) error {
 	if data == "" {
 		return nil
 	}
 
-	if !forceFormat && !thinkToContent {
+	rewriteModel := shouldRewriteMappedResponseModel(info)
+	if !forceFormat && !thinkToContent && !rewriteModel {
 		return helper.StringData(c, data)
+	}
+	if !forceFormat && !thinkToContent {
+		rewritten, err := rewriteResponseModelField(common.StringToByteSlice(data), clientVisibleResponseModel(info, ""))
+		if err != nil {
+			return err
+		}
+		return helper.StringData(c, string(rewritten))
 	}
 
 	var lastStreamResponse dto.ChatCompletionsStreamResponse
 	if err := common.UnmarshalJsonStr(data, &lastStreamResponse); err != nil {
 		return err
 	}
+	lastStreamResponse.Model = clientVisibleResponseModel(info, lastStreamResponse.Model)
 
 	if !thinkToContent {
 		return helper.ObjectData(c, lastStreamResponse)
@@ -167,6 +210,7 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		&containStreamUsage, info, &shouldSendLastResp); err != nil {
 		logger.LogError(c, fmt.Sprintf("error handling last response: %s, lastStreamData: [%s]", err.Error(), lastStreamData))
 	}
+	model = clientVisibleResponseModel(info, model)
 
 	if info.RelayFormat == types.RelayFormatOpenAI {
 		if shouldSendLastResp {
@@ -231,6 +275,11 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	if info.ChannelSetting.ForceFormat {
 		forceFormat = true
 	}
+	responseModel := clientVisibleResponseModel(info, simpleResponse.Model)
+	rewriteModel := responseModel != simpleResponse.Model
+	if rewriteModel {
+		simpleResponse.Model = responseModel
+	}
 
 	usageModified := false
 	if simpleResponse.Usage.PromptTokens == 0 {
@@ -253,14 +302,30 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 
 	switch info.RelayFormat {
 	case types.RelayFormatOpenAI:
-		if usageModified {
-			var bodyMap map[string]interface{}
+		if usageModified || rewriteModel {
+			var bodyMap map[string]json.RawMessage
 			err = common.Unmarshal(responseBody, &bodyMap)
 			if err != nil {
 				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 			}
-			bodyMap["usage"] = simpleResponse.Usage
-			responseBody, _ = common.Marshal(bodyMap)
+			if usageModified {
+				usageJSON, err := common.Marshal(simpleResponse.Usage)
+				if err != nil {
+					return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+				}
+				bodyMap["usage"] = usageJSON
+			}
+			if rewriteModel {
+				modelJSON, err := common.Marshal(simpleResponse.Model)
+				if err != nil {
+					return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+				}
+				bodyMap["model"] = modelJSON
+			}
+			responseBody, err = common.Marshal(bodyMap)
+			if err != nil {
+				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+			}
 		}
 		if forceFormat {
 			responseBody, err = common.Marshal(simpleResponse)

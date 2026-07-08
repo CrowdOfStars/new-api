@@ -52,6 +52,7 @@ func OaiResponsesToChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		usage = service.ResponseText2Usage(c, text, info.UpstreamModelName, info.GetEstimatePromptTokens())
 		chatResp.Usage = *usage
 	}
+	chatResp.Model = clientVisibleResponseModel(info, chatResp.Model)
 
 	var responseBody []byte
 	switch info.RelayFormat {
@@ -155,6 +156,7 @@ func OaiResponsesToChatBufferedStreamHandler(c *gin.Context, info *relaycommon.R
 		usage = service.ResponseText2Usage(c, text, info.UpstreamModelName, info.GetEstimatePromptTokens())
 		chatResp.Usage = *usage
 	}
+	chatResp.Model = clientVisibleResponseModel(info, chatResp.Model)
 
 	var responseBody []byte
 	switch info.RelayFormat {
