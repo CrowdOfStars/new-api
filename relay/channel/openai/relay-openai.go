@@ -20,36 +20,50 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const debugResponseVersion = "v3"
+
 func shouldRewriteMappedResponseModel(info *relaycommon.RelayInfo) bool {
-	return info != nil &&
-		info.ChannelMeta != nil &&
-		info.ChannelMeta.IsModelMapped &&
-		info.ChannelMeta.UpstreamModelName != ""
+	if info == nil || info.ChannelMeta == nil {
+		return false
+	}
+	return info.ChannelMeta.IsModelMapped && info.ChannelMeta.UpstreamModelName != ""
 }
 
 func clientVisibleResponseModel(info *relaycommon.RelayInfo, fallback string) string {
 	if shouldRewriteMappedResponseModel(info) {
 		return info.ChannelMeta.UpstreamModelName
 	}
+	if fallback != "" {
+		return fallback
+	}
+	if info != nil && info.UpstreamModelName != "" {
+		return info.UpstreamModelName
+	}
+	if info != nil {
+		return info.OriginModelName
+	}
 	return fallback
 }
 
-func rewriteResponseModelField(data []byte, model string) ([]byte, error) {
-	if model == "" {
-		return data, nil
-	}
+func rewriteResponseMetadataFields(data []byte, model string) ([]byte, error) {
 	var body map[string]json.RawMessage
 	if err := common.Unmarshal(data, &body); err != nil {
 		return nil, err
 	}
-	if _, ok := body["model"]; !ok {
-		return data, nil
+	if model != "" {
+		if _, ok := body["model"]; ok {
+			modelJSON, err := common.Marshal(model)
+			if err != nil {
+				return nil, err
+			}
+			body["model"] = modelJSON
+		}
 	}
-	modelJSON, err := common.Marshal(model)
+	versionJSON, err := common.Marshal(debugResponseVersion)
 	if err != nil {
 		return nil, err
 	}
-	body["model"] = modelJSON
+	body["version"] = versionJSON
 	return common.Marshal(body)
 }
 
@@ -58,12 +72,12 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 		return nil
 	}
 
-	rewriteModel := shouldRewriteMappedResponseModel(info)
-	if !forceFormat && !thinkToContent && !rewriteModel {
-		return helper.StringData(c, data)
-	}
 	if !forceFormat && !thinkToContent {
-		rewritten, err := rewriteResponseModelField(common.StringToByteSlice(data), clientVisibleResponseModel(info, ""))
+		model := ""
+		if shouldRewriteMappedResponseModel(info) {
+			model = clientVisibleResponseModel(info, "")
+		}
+		rewritten, err := rewriteResponseMetadataFields(common.StringToByteSlice(data), model)
 		if err != nil {
 			return err
 		}
@@ -75,6 +89,7 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 		return err
 	}
 	lastStreamResponse.Model = clientVisibleResponseModel(info, lastStreamResponse.Model)
+	lastStreamResponse.Version = debugResponseVersion
 
 	if !thinkToContent {
 		return helper.ObjectData(c, lastStreamResponse)
@@ -280,6 +295,7 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	if rewriteModel {
 		simpleResponse.Model = responseModel
 	}
+	simpleResponse.Version = debugResponseVersion
 
 	usageModified := false
 	if simpleResponse.Usage.PromptTokens == 0 {
@@ -302,7 +318,7 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 
 	switch info.RelayFormat {
 	case types.RelayFormatOpenAI:
-		if usageModified || rewriteModel {
+		if usageModified || rewriteModel || debugResponseVersion != "" {
 			var bodyMap map[string]json.RawMessage
 			err = common.Unmarshal(responseBody, &bodyMap)
 			if err != nil {
@@ -322,6 +338,11 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 				}
 				bodyMap["model"] = modelJSON
 			}
+			versionJSON, err := common.Marshal(debugResponseVersion)
+			if err != nil {
+				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+			}
+			bodyMap["version"] = versionJSON
 			responseBody, err = common.Marshal(bodyMap)
 			if err != nil {
 				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
