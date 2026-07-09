@@ -253,6 +253,15 @@ func SetApiRouter(router *gin.Engine) {
 			}
 		}
 
+		jobsRoute := apiRouter.Group("/v1/jobs")
+		jobsRoute.Use(middleware.TokenAuth())
+		{
+			jobsCreateRoute := jobsRoute.Group("")
+			jobsCreateRoute.Use(middleware.SystemPerformanceCheck(), middleware.ModelRequestRateLimit(), middleware.Distribute())
+			jobsCreateRoute.POST("/createTask", controller.CreateJobTask)
+			jobsRoute.GET("/recordInfo", controller.GetJobRecordInfo)
+		}
+
 		redemptionRoute := apiRouter.Group("/redemption")
 		redemptionRoute.Use(middleware.AdminAuth())
 		{

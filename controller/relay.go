@@ -122,15 +122,6 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		newAPIError = types.NewError(err, types.ErrorCodeGenRelayInfoFailed)
 		return
 	}
-	asyncImage := shouldUseAsyncImage(c, relayFormat, request)
-	if asyncImage {
-		if request.IsStream(c) {
-			newAPIError = types.NewErrorWithStatusCode(fmt.Errorf("async image generation does not support stream=true"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
-			return
-		}
-		c.Set(asyncImageContextKey, true)
-		relayInfo.ForcePreConsume = true
-	}
 
 	needSensitiveCheck := setting.ShouldCheckPromptSensitive()
 	needCountToken := constant.CountToken
@@ -186,11 +177,6 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			service.ChargeViolationFeeIfNeeded(c, relayInfo, newAPIError)
 		}
 	}()
-
-	if handled, asyncErr := maybeStartAsyncImageTask(c, relayInfo); handled {
-		newAPIError = asyncErr
-		return
-	}
 
 	retryParam := &service.RetryParam{
 		Ctx:         c,

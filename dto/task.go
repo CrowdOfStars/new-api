@@ -55,23 +55,3 @@ type TaskDto struct {
 type FetchReq struct {
 	IDs []string `json:"ids"`
 }
-
-type AsyncImageTaskError struct {
-	Message string `json:"message"`
-	Type    string `json:"type,omitempty"`
-	Code    string `json:"code,omitempty"`
-}
-
-type AsyncImageTaskResponse struct {
-	ID        string               `json:"id"`
-	TaskID    string               `json:"task_id"`
-	Object    string               `json:"object"`
-	Created   int64                `json:"created"`
-	UpdatedAt int64                `json:"updated_at,omitempty"`
-	Status    string               `json:"status"`
-	Progress  string               `json:"progress,omitempty"`
-	Model     string               `json:"model,omitempty"`
-	Data      []ImageData          `json:"data,omitempty"`
-	Metadata  json.RawMessage      `json:"metadata,omitempty"`
-	Error     *AsyncImageTaskError `json:"error,omitempty"`
-}

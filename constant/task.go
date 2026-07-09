@@ -8,6 +8,8 @@ const (
 	TaskPlatformImage                   = "image"
 )
 
+const TaskImageGenerationRelayPath = "/v1/images/generations"
+
 const (
 	SunoActionMusic  = "MUSIC"
 	SunoActionLyrics = "LYRICS"
