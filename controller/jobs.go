@@ -333,6 +333,9 @@ func markImageJobTaskSucceeded(c *gin.Context, info *relaycommon.RelayInfo, task
 	task.Properties.UpstreamModelName = info.UpstreamModelName
 	if len(responseBody) > 0 {
 		task.Data = responseBody
+		if resultURL := task.GetResultURL(); resultURL != "" {
+			task.PrivateData.ResultURL = resultURL
+		}
 	}
 	won, err := task.UpdateWithStatus(oldStatus)
 	if err != nil {

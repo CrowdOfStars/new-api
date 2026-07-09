@@ -101,6 +101,39 @@ func TestBuildJobRecordDataSuccessPrefersRawMetadata(t *testing.T) {
 	assert.Equal(t, 50, data.CreditsConsumed)
 }
 
+func TestImageJobTaskResultURL(t *testing.T) {
+	imageBody, err := common.Marshal(dto.ImageResponse{
+		Data: []dto.ImageData{
+			{Url: "https://example.com/generated-content.jpg"},
+		},
+	})
+	require.NoError(t, err)
+
+	task := &model.Task{
+		Platform: constant.TaskPlatformImage,
+		Data:     json.RawMessage(imageBody),
+	}
+	assert.Equal(t, "https://example.com/generated-content.jpg", task.GetResultURL())
+
+	metadataBody, err := common.Marshal(dto.ImageResponse{
+		Metadata: json.RawMessage(`{"resultUrls":["https://example.com/from-metadata.jpg"]}`),
+	})
+	require.NoError(t, err)
+
+	task.Data = json.RawMessage(metadataBody)
+	assert.Equal(t, "https://example.com/from-metadata.jpg", task.GetResultURL())
+
+	base64Body, err := common.Marshal(dto.ImageResponse{
+		Data: []dto.ImageData{
+			{B64Json: "iVBORw0KGgo="},
+		},
+	})
+	require.NoError(t, err)
+
+	task.Data = json.RawMessage(base64Body)
+	assert.Equal(t, "data:image/png;base64,iVBORw0KGgo=", task.GetResultURL())
+}
+
 func TestBuildJobRecordDataFailure(t *testing.T) {
 	task := &model.Task{
 		TaskID:     "task_failed",
