@@ -25,6 +25,8 @@ services:
     command: --log-dir /app/logs
     ports:
       - "3011:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./data:/data
       - ./logs:/app/logs
