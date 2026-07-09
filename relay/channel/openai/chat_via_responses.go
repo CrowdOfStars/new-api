@@ -53,7 +53,6 @@ func OaiResponsesToChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		chatResp.Usage = *usage
 	}
 	chatResp.Model = clientVisibleResponseModel(info, chatResp.Model)
-	chatResp.Version = debugResponseVersion
 
 	var responseBody []byte
 	switch info.RelayFormat {
@@ -158,7 +157,6 @@ func OaiResponsesToChatBufferedStreamHandler(c *gin.Context, info *relaycommon.R
 		chatResp.Usage = *usage
 	}
 	chatResp.Model = clientVisibleResponseModel(info, chatResp.Model)
-	chatResp.Version = debugResponseVersion
 
 	var responseBody []byte
 	switch info.RelayFormat {
@@ -198,7 +196,6 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 	}
 
 	sendChatChunk := func(chunk dto.ChatCompletionsStreamResponse) bool {
-		chunk.Version = debugResponseVersion
 		if len(chunk.Choices) == 0 && chunk.Usage == nil {
 			return true
 		}
@@ -282,7 +279,6 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 	}
 	if info.RelayFormat == types.RelayFormatOpenAI && info.ShouldIncludeUsage && usage != nil {
 		response := helper.GenerateFinalUsageResponse(responseId, state.Created, state.Model, *usage)
-		response.Version = debugResponseVersion
 		if err := helper.ObjectData(c, response); err != nil {
 			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError)
 		}

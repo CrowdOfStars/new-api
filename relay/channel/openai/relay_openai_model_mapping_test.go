@@ -60,8 +60,7 @@ func TestOpenaiHandlerRewritesMappedResponseModel(t *testing.T) {
 
 	var got map[string]interface{}
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &got))
-	assert.Equal(t, "internal-model", got["model"])
-	assert.Equal(t, "v3", got["version"])
+	assert.Equal(t, "public-model", got["model"])
 	assert.Equal(t, "0", got["cost"])
 }
 
@@ -83,9 +82,8 @@ func TestOaiStreamHandlerRewritesMappedResponseModel(t *testing.T) {
 	require.NotNil(t, usage)
 
 	got := recorder.Body.String()
-	assert.Contains(t, got, `"model":"internal-model"`)
-	assert.Contains(t, got, `"version":"v3"`)
-	assert.NotContains(t, got, "public-model")
+	assert.Contains(t, got, `"model":"public-model"`)
+	assert.NotContains(t, got, "internal-model")
 
 	var finalUsage dto.ChatCompletionsStreamResponse
 	lines := strings.Split(got, "\n")
@@ -97,8 +95,7 @@ func TestOaiStreamHandlerRewritesMappedResponseModel(t *testing.T) {
 		require.NoError(t, common.UnmarshalJsonStr(data, &finalUsage))
 		break
 	}
-	assert.Equal(t, "internal-model", finalUsage.Model)
-	assert.Equal(t, "v3", finalUsage.Version)
+	assert.Equal(t, "public-model", finalUsage.Model)
 }
 
 func TestOaiStreamHandlerKeepsModelWhenLastEventHasNoModel(t *testing.T) {
@@ -145,7 +142,6 @@ func TestOaiResponsesToChatStreamHandlerRewritesMappedResponseModel(t *testing.T
 	require.NotNil(t, usage)
 
 	got := recorder.Body.String()
-	assert.Contains(t, got, `"model":"internal-model"`)
-	assert.Contains(t, got, `"version":"v3"`)
-	assert.NotContains(t, got, "public-model")
+	assert.Contains(t, got, `"model":"public-model"`)
+	assert.NotContains(t, got, "internal-model")
 }

@@ -45,7 +45,6 @@ type OpenAITextResponse struct {
 	Choices []OpenAITextResponseChoice `json:"choices"`
 	Error   any                        `json:"error,omitempty"`
 	Usage   `json:"usage"`
-	Version string `json:"version,omitempty"`
 }
 
 // GetOpenAIError 从动态错误类型中提取OpenAIError结构
@@ -145,7 +144,6 @@ type ChatCompletionsStreamResponse struct {
 	Object            string                                `json:"object"`
 	Created           int64                                 `json:"created"`
 	Model             string                                `json:"model"`
-	Version           string                                `json:"version,omitempty"`
 	SystemFingerprint *string                               `json:"system_fingerprint"`
 	Choices           []ChatCompletionsStreamResponseChoice `json:"choices"`
 	Usage             *Usage                                `json:"usage"`
@@ -193,7 +191,6 @@ func (c *ChatCompletionsStreamResponse) Copy() *ChatCompletionsStreamResponse {
 		Object:            c.Object,
 		Created:           c.Created,
 		Model:             c.Model,
-		Version:           c.Version,
 		SystemFingerprint: c.SystemFingerprint,
 		Choices:           choices,
 		Usage:             c.Usage,

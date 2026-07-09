@@ -20,8 +20,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const debugResponseVersion = "v3"
-
 func shouldRewriteMappedResponseModel(info *relaycommon.RelayInfo) bool {
 	if info == nil || info.ChannelMeta == nil {
 		return false
@@ -31,7 +29,9 @@ func shouldRewriteMappedResponseModel(info *relaycommon.RelayInfo) bool {
 
 func clientVisibleResponseModel(info *relaycommon.RelayInfo, fallback string) string {
 	if shouldRewriteMappedResponseModel(info) {
-		return info.ChannelMeta.UpstreamModelName
+		if info.OriginModelName != "" {
+			return info.OriginModelName
+		}
 	}
 	if fallback != "" {
 		return fallback
@@ -59,11 +59,6 @@ func rewriteResponseMetadataFields(data []byte, model string) ([]byte, error) {
 			body["model"] = modelJSON
 		}
 	}
-	versionJSON, err := common.Marshal(debugResponseVersion)
-	if err != nil {
-		return nil, err
-	}
-	body["version"] = versionJSON
 	return common.Marshal(body)
 }
 
@@ -73,15 +68,15 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 	}
 
 	if !forceFormat && !thinkToContent {
-		model := ""
 		if shouldRewriteMappedResponseModel(info) {
-			model = clientVisibleResponseModel(info, "")
+			model := clientVisibleResponseModel(info, "")
+			rewritten, err := rewriteResponseMetadataFields(common.StringToByteSlice(data), model)
+			if err != nil {
+				return err
+			}
+			return helper.StringData(c, string(rewritten))
 		}
-		rewritten, err := rewriteResponseMetadataFields(common.StringToByteSlice(data), model)
-		if err != nil {
-			return err
-		}
-		return helper.StringData(c, string(rewritten))
+		return helper.StringData(c, data)
 	}
 
 	var lastStreamResponse dto.ChatCompletionsStreamResponse
@@ -89,7 +84,6 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 		return err
 	}
 	lastStreamResponse.Model = clientVisibleResponseModel(info, lastStreamResponse.Model)
-	lastStreamResponse.Version = debugResponseVersion
 
 	if !thinkToContent {
 		return helper.ObjectData(c, lastStreamResponse)
@@ -295,7 +289,6 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	if rewriteModel {
 		simpleResponse.Model = responseModel
 	}
-	simpleResponse.Version = debugResponseVersion
 
 	usageModified := false
 	if simpleResponse.Usage.PromptTokens == 0 {
@@ -318,7 +311,7 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 
 	switch info.RelayFormat {
 	case types.RelayFormatOpenAI:
-		if usageModified || rewriteModel || debugResponseVersion != "" {
+		if usageModified || rewriteModel {
 			var bodyMap map[string]json.RawMessage
 			err = common.Unmarshal(responseBody, &bodyMap)
 			if err != nil {
@@ -338,11 +331,6 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 				}
 				bodyMap["model"] = modelJSON
 			}
-			versionJSON, err := common.Marshal(debugResponseVersion)
-			if err != nil {
-				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
-			}
-			bodyMap["version"] = versionJSON
 			responseBody, err = common.Marshal(bodyMap)
 			if err != nil {
 				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
