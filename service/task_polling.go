@@ -181,11 +181,7 @@ func DispatchPlatformUpdate(ctx context.Context, platform constant.TaskPlatform,
 	case constant.TaskPlatformMidjourney:
 		// MJ 轮询由其自身处理，这里预留入口
 	case constant.TaskPlatformSuno:
-		// _ = UpdateSunoTasks(ctx, taskChannelM, taskM)
 		_ = UpdateSunoTasks(ctx, taskChannelM, taskM)
-	case constant.TaskPlatformImage:
-		// Image async tasks are executed by the local submit worker. If the
-		// process exits mid-flight, the timeout sweeper above will refund them.
 	default:
 		if err := UpdateVideoTasks(ctx, platform, taskChannelM, taskM); err != nil {
 			common.SysLog(fmt.Sprintf("UpdateVideoTasks fail: %s", err))

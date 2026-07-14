@@ -28,19 +28,14 @@ import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-import { TASK_ACTIONS, TASK_PLATFORMS, TASK_STATUS } from '../../constants'
-import {
-  taskActionMapper,
-  taskPlatformMapper,
-  taskStatusMapper,
-} from '../../lib/mappers'
+import { TASK_ACTIONS, TASK_STATUS } from '../../constants'
+import { taskActionMapper, taskStatusMapper } from '../../lib/mappers'
 import type { TaskLog } from '../../types'
 import {
   AudioPreviewDialog,
   type AudioClip,
 } from '../dialogs/audio-preview-dialog'
 import { FailReasonDialog } from '../dialogs/fail-reason-dialog'
-import { ImageDialog } from '../dialogs/image-dialog'
 import { useUsageLogsContext } from '../usage-logs-provider'
 import {
   createDurationColumn,
@@ -59,112 +54,6 @@ function parseTaskData(data: unknown): unknown[] {
     }
   }
   return []
-}
-
-function parseMaybeJSON(value: unknown): unknown {
-  if (typeof value !== 'string') return value
-  const trimmed = value.trim()
-  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return value
-  try {
-    return JSON.parse(trimmed)
-  } catch {
-    return value
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function taskProperties(log: TaskLog): Record<string, unknown> {
-  const properties = parseMaybeJSON(log.properties)
-  return isRecord(properties) ? properties : {}
-}
-
-function getTaskModelName(log: TaskLog): string {
-  const properties = taskProperties(log)
-  for (const key of ['origin_model_name', 'upstream_model_name']) {
-    const value = properties[key]
-    if (typeof value === 'string' && value.trim() !== '') return value.trim()
-  }
-
-  const input = parseMaybeJSON(properties.input)
-  if (isRecord(input)) {
-    const model = input.model
-    if (typeof model === 'string' && model.trim() !== '') return model.trim()
-  }
-  return ''
-}
-
-function imageSourceFromString(value: unknown, allowRawBase64 = false): string {
-  if (typeof value !== 'string') return ''
-  const trimmed = value.trim()
-  if (trimmed === '') return ''
-  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith('data:image/')) {
-    return trimmed
-  }
-  if (
-    allowRawBase64 &&
-    trimmed.length > 64 &&
-    /^[A-Za-z0-9+/=_-]+$/.test(trimmed)
-  ) {
-    return `data:image/png;base64,${trimmed}`
-  }
-  return ''
-}
-
-function extractImageSource(value: unknown, depth = 0): string {
-  if (depth > 4) return ''
-
-  const parsed = parseMaybeJSON(value)
-  if (Array.isArray(parsed)) {
-    for (const item of parsed) {
-      const source = extractImageSource(item, depth + 1)
-      if (source !== '') return source
-    }
-    return ''
-  }
-
-  if (!isRecord(parsed)) return imageSourceFromString(parsed)
-
-  for (const key of ['url', 'image_url', 'result_url']) {
-    const source = imageSourceFromString(parsed[key])
-    if (source !== '') return source
-  }
-
-  for (const key of ['b64_json', 'base64', 'image_base64']) {
-    const source = imageSourceFromString(parsed[key], true)
-    if (source !== '') return source
-  }
-
-  for (const key of [
-    'data',
-    'metadata',
-    'output',
-    'result',
-    'resultUrls',
-    'result_urls',
-    'urls',
-    'image_urls',
-  ]) {
-    const source = extractImageSource(parsed[key], depth + 1)
-    if (source !== '') return source
-  }
-
-  return ''
-}
-
-function isImageTask(log: TaskLog): boolean {
-  return (
-    log.platform === TASK_PLATFORMS.IMAGE ||
-    log.action === TASK_ACTIONS.IMAGE_GENERATION
-  )
-}
-
-function getImageTaskSource(log: TaskLog): string {
-  return (
-    imageSourceFromString(log.result_url, true) || extractImageSource(log.data)
-  )
 }
 
 function AudioPreviewCell({ log }: { log: TaskLog }) {
@@ -280,7 +169,6 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
       cell: ({ row }) => {
         const log = row.original
         const taskId = row.getValue('task_id') as string
-        const modelName = getTaskModelName(log)
         if (!taskId) {
           return <span className='text-muted-foreground/60 text-xs'>-</span>
         }
@@ -294,10 +182,7 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
               className='border-border/60 bg-muted/30 !text-foreground max-w-full truncate rounded-md border px-1.5 py-0.5 font-mono'
             />
             <span className='text-muted-foreground/60 truncate text-[11px]'>
-              {t(taskPlatformMapper.getLabel(log.platform, log.platform))} ·{' '}
-              {isImageTask(log) && modelName !== ''
-                ? modelName
-                : t(taskActionMapper.getLabel(log.action))}
+              {t(log.platform)} · {t(taskActionMapper.getLabel(log.action))}
             </span>
           </div>
         )
@@ -336,9 +221,9 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
         const failReason = row.getValue('fail_reason') as string
         const status = log.status
         const [dialogOpen, setDialogOpen] = useState(false)
-        const isSuccess = status === TASK_STATUS.SUCCESS
 
-        const isSunoSuccess = log.platform === TASK_PLATFORMS.SUNO && isSuccess
+        const isSunoSuccess =
+          log.platform === 'suno' && status === TASK_STATUS.SUCCESS
         if (isSunoSuccess) {
           const data = parseTaskData(log.data)
           if (
@@ -353,41 +238,13 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
           }
         }
 
-        if (isSuccess && isImageTask(log)) {
-          const imageUrl = getImageTaskSource(log)
-          if (imageUrl !== '') {
-            return (
-              <>
-                <button
-                  type='button'
-                  className='border-border/70 bg-muted/40 group block size-12 overflow-hidden rounded-md border'
-                  onClick={() => setDialogOpen(true)}
-                  title={t('Click to view image')}
-                >
-                  <img
-                    src={imageUrl}
-                    alt={t('Generated image')}
-                    className='h-full w-full object-cover transition-transform group-hover:scale-105'
-                    loading='lazy'
-                  />
-                </button>
-                <ImageDialog
-                  imageUrl={imageUrl}
-                  taskId={log.task_id}
-                  open={dialogOpen}
-                  onOpenChange={setDialogOpen}
-                />
-              </>
-            )
-          }
-        }
-
         const isVideoTask =
           log.action === TASK_ACTIONS.GENERATE ||
           log.action === TASK_ACTIONS.TEXT_GENERATE ||
           log.action === TASK_ACTIONS.FIRST_TAIL_GENERATE ||
           log.action === TASK_ACTIONS.REFERENCE_GENERATE ||
           log.action === TASK_ACTIONS.REMIX_GENERATE
+        const isSuccess = status === TASK_STATUS.SUCCESS
         const isUrl = failReason?.startsWith('http')
 
         if (isSuccess && isVideoTask && isUrl) {

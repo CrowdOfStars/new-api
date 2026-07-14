@@ -1,7 +1,6 @@
 package openai
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,52 +14,11 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/relayconvert"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 )
-
-func shouldRewriteMappedResponseModel(info *relaycommon.RelayInfo) bool {
-	if info == nil || info.ChannelMeta == nil {
-		return false
-	}
-	return info.ChannelMeta.IsModelMapped && info.ChannelMeta.UpstreamModelName != ""
-}
-
-func clientVisibleResponseModel(info *relaycommon.RelayInfo, fallback string) string {
-	if shouldRewriteMappedResponseModel(info) {
-		if info.OriginModelName != "" {
-			return info.OriginModelName
-		}
-	}
-	if fallback != "" {
-		return fallback
-	}
-	if info != nil && info.UpstreamModelName != "" {
-		return info.UpstreamModelName
-	}
-	if info != nil {
-		return info.OriginModelName
-	}
-	return fallback
-}
-
-func rewriteResponseMetadataFields(data []byte, model string) ([]byte, error) {
-	var body map[string]json.RawMessage
-	if err := common.Unmarshal(data, &body); err != nil {
-		return nil, err
-	}
-	if model != "" {
-		if _, ok := body["model"]; ok {
-			modelJSON, err := common.Marshal(model)
-			if err != nil {
-				return nil, err
-			}
-			body["model"] = modelJSON
-		}
-	}
-	return common.Marshal(body)
-}
 
 func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, forceFormat bool, thinkToContent bool) error {
 	if data == "" {
@@ -68,14 +26,6 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 	}
 
 	if !forceFormat && !thinkToContent {
-		if shouldRewriteMappedResponseModel(info) {
-			model := clientVisibleResponseModel(info, "")
-			rewritten, err := rewriteResponseMetadataFields(common.StringToByteSlice(data), model)
-			if err != nil {
-				return err
-			}
-			return helper.StringData(c, string(rewritten))
-		}
 		return helper.StringData(c, data)
 	}
 
@@ -83,7 +33,6 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 	if err := common.UnmarshalJsonStr(data, &lastStreamResponse); err != nil {
 		return err
 	}
-	lastStreamResponse.Model = clientVisibleResponseModel(info, lastStreamResponse.Model)
 
 	if !thinkToContent {
 		return helper.ObjectData(c, lastStreamResponse)
@@ -219,7 +168,6 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		&containStreamUsage, info, &shouldSendLastResp); err != nil {
 		logger.LogError(c, fmt.Sprintf("error handling last response: %s, lastStreamData: [%s]", err.Error(), lastStreamData))
 	}
-	model = clientVisibleResponseModel(info, model)
 
 	if info.RelayFormat == types.RelayFormatOpenAI {
 		if shouldSendLastResp {
@@ -284,11 +232,6 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	if info.ChannelSetting.ForceFormat {
 		forceFormat = true
 	}
-	responseModel := clientVisibleResponseModel(info, simpleResponse.Model)
-	rewriteModel := responseModel != simpleResponse.Model
-	if rewriteModel {
-		simpleResponse.Model = responseModel
-	}
 
 	usageModified := false
 	if simpleResponse.Usage.PromptTokens == 0 {
@@ -311,30 +254,14 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 
 	switch info.RelayFormat {
 	case types.RelayFormatOpenAI:
-		if usageModified || rewriteModel {
-			var bodyMap map[string]json.RawMessage
+		if usageModified {
+			var bodyMap map[string]interface{}
 			err = common.Unmarshal(responseBody, &bodyMap)
 			if err != nil {
 				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 			}
-			if usageModified {
-				usageJSON, err := common.Marshal(simpleResponse.Usage)
-				if err != nil {
-					return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
-				}
-				bodyMap["usage"] = usageJSON
-			}
-			if rewriteModel {
-				modelJSON, err := common.Marshal(simpleResponse.Model)
-				if err != nil {
-					return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
-				}
-				bodyMap["model"] = modelJSON
-			}
-			responseBody, err = common.Marshal(bodyMap)
-			if err != nil {
-				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
-			}
+			bodyMap["usage"] = simpleResponse.Usage
+			responseBody, _ = common.Marshal(bodyMap)
 		}
 		if forceFormat {
 			responseBody, err = common.Marshal(simpleResponse)
@@ -345,15 +272,21 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 			break
 		}
 	case types.RelayFormatClaude:
-		claudeResp := service.ResponseOpenAI2Claude(&simpleResponse, info)
-		claudeRespStr, err := common.Marshal(claudeResp)
+		convertResult, err := relayconvert.ConvertResponse(c, info, types.RelayFormatClaude, &simpleResponse)
+		if err != nil {
+			return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
+		}
+		claudeRespStr, err := common.Marshal(convertResult.Value)
 		if err != nil {
 			return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 		}
 		responseBody = claudeRespStr
 	case types.RelayFormatGemini:
-		geminiResp := service.ResponseOpenAI2Gemini(&simpleResponse, info)
-		geminiRespStr, err := common.Marshal(geminiResp)
+		convertResult, err := relayconvert.ConvertResponse(c, info, types.RelayFormatGemini, &simpleResponse)
+		if err != nil {
+			return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
+		}
+		geminiRespStr, err := common.Marshal(convertResult.Value)
 		if err != nil {
 			return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 		}

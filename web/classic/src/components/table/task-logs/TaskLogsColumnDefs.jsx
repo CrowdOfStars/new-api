@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Progress, Tag, Typography } from '@douyinfe/semi-ui';
+import { Progress, Tag, Tooltip, Typography } from '@douyinfe/semi-ui';
 import {
   Music,
   FileText,
@@ -30,8 +30,9 @@ import {
   XCircle,
   Loader,
   List,
+  Hash,
+  Video,
   Sparkles,
-  Image as ImageIcon,
 } from 'lucide-react';
 import {
   TASK_ACTION_FIRST_TAIL_GENERATE,
@@ -39,7 +40,6 @@ import {
   TASK_ACTION_REFERENCE_GENERATE,
   TASK_ACTION_TEXT_GENERATE,
   TASK_ACTION_REMIX_GENERATE,
-  TASK_ACTION_IMAGE_GENERATION,
 } from '../../../constants/common.constant';
 import { CHANNEL_OPTIONS } from '../../../constants/channel.constants';
 import { stringToColor } from '../../../helpers/render';
@@ -90,129 +90,6 @@ function renderDuration(submit_time, finishTime) {
   );
 }
 
-function parseMaybeJSON(value) {
-  if (typeof value !== 'string') {
-    return value;
-  }
-  const trimmed = value.trim();
-  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
-    return value;
-  }
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    return value;
-  }
-}
-
-function isRecord(value) {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function getTaskModelName(record) {
-  const properties = parseMaybeJSON(record?.properties);
-  if (isRecord(properties)) {
-    const originModelName = properties.origin_model_name;
-    if (typeof originModelName === 'string' && originModelName.trim()) {
-      return originModelName.trim();
-    }
-    const upstreamModelName = properties.upstream_model_name;
-    if (typeof upstreamModelName === 'string' && upstreamModelName.trim()) {
-      return upstreamModelName.trim();
-    }
-    const input = parseMaybeJSON(properties.input);
-    if (isRecord(input)) {
-      const model = input.model;
-      if (typeof model === 'string' && model.trim()) {
-        return model.trim();
-      }
-    }
-  }
-  return '';
-}
-
-function imageSourceFromString(value, allowRawBase64 = false) {
-  if (typeof value !== 'string') {
-    return '';
-  }
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return '';
-  }
-  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith('data:image/')) {
-    return trimmed;
-  }
-  if (
-    allowRawBase64 &&
-    trimmed.length > 64 &&
-    /^[A-Za-z0-9+/=_-]+$/.test(trimmed)
-  ) {
-    return `data:image/png;base64,${trimmed}`;
-  }
-  return '';
-}
-
-function extractImageSource(value, depth = 0) {
-  if (depth > 4) {
-    return '';
-  }
-  const parsed = parseMaybeJSON(value);
-  if (Array.isArray(parsed)) {
-    for (const item of parsed) {
-      const source = extractImageSource(item, depth + 1);
-      if (source) {
-        return source;
-      }
-    }
-    return '';
-  }
-  if (!isRecord(parsed)) {
-    return imageSourceFromString(parsed);
-  }
-  for (const key of ['url', 'image_url', 'result_url']) {
-    const source = imageSourceFromString(parsed[key]);
-    if (source) {
-      return source;
-    }
-  }
-  for (const key of ['b64_json', 'base64', 'image_base64']) {
-    const source = imageSourceFromString(parsed[key], true);
-    if (source) {
-      return source;
-    }
-  }
-  for (const key of [
-    'data',
-    'metadata',
-    'output',
-    'result',
-    'resultUrls',
-    'result_urls',
-    'urls',
-    'image_urls',
-  ]) {
-    const source = extractImageSource(parsed[key], depth + 1);
-    if (source) {
-      return source;
-    }
-  }
-  return '';
-}
-
-function isImageTask(record) {
-  return (
-    record?.platform === 'image' ||
-    record?.action === TASK_ACTION_IMAGE_GENERATION
-  );
-}
-
-function getImageTaskSource(record) {
-  return (
-    imageSourceFromString(record?.result_url, true) ||
-    extractImageSource(record?.data)
-  );
-}
-
 const renderType = (type, t) => {
   switch (type) {
     case 'MUSIC':
@@ -257,16 +134,10 @@ const renderType = (type, t) => {
           {t('视频Remix')}
         </Tag>
       );
-    case TASK_ACTION_IMAGE_GENERATION:
-      return (
-        <Tag color='violet' shape='circle' prefixIcon={<ImageIcon size={14} />}>
-          imageGeneration
-        </Tag>
-      );
     default:
       return (
         <Tag color='white' shape='circle' prefixIcon={<HelpCircle size={14} />}>
-          {type || t('未知')}
+          {t('未知')}
         </Tag>
       );
   }
@@ -290,16 +161,10 @@ const renderPlatform = (platform, t) => {
           Suno
         </Tag>
       );
-    case 'image':
-      return (
-        <Tag color='violet' shape='circle'>
-          Image
-        </Tag>
-      );
     default:
       return (
         <Tag color='white' shape='circle'>
-          {platform || t('未知')}
+          {t('未知')}
         </Tag>
       );
   }
@@ -436,10 +301,15 @@ export const getTaskLogsColumns = ({
         const displayText = String(record.username || userId || '?');
         return (
           <Space>
-            <Avatar size='extra-small' color={stringToColor(displayText)}>
+            <Avatar
+              size='extra-small'
+              color={stringToColor(displayText)}
+            >
               {displayText.slice(0, 1)}
             </Avatar>
-            <Typography.Text>{displayText}</Typography.Text>
+            <Typography.Text>
+              {displayText}
+            </Typography.Text>
           </Space>
         );
       },
@@ -457,18 +327,6 @@ export const getTaskLogsColumns = ({
       title: t('类型'),
       dataIndex: 'action',
       render: (text, record, index) => {
-        if (isImageTask(record)) {
-          const modelName = getTaskModelName(record);
-          return (
-            <Tag
-              color='violet'
-              shape='circle'
-              prefixIcon={<ImageIcon size={14} />}
-            >
-              {modelName || text || 'imageGeneration'}
-            </Tag>
-          );
-        }
         return <div>{renderType(text, t)}</div>;
       },
     },
@@ -549,29 +407,6 @@ export const getTaskLogsColumns = ({
           );
         }
 
-        const isSuccess = record.status === 'SUCCESS';
-        if (isSuccess && isImageTask(record)) {
-          const imageUrl = getImageTaskSource(record);
-          if (imageUrl) {
-            return (
-              <img
-                src={imageUrl}
-                alt='generated'
-                style={{
-                  width: 48,
-                  height: 48,
-                  objectFit: 'cover',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                }}
-                onClick={() => {
-                  window.open(imageUrl, '_blank');
-                }}
-              />
-            );
-          }
-        }
-
         // 视频预览：优先使用 result_url，兼容旧数据 fail_reason 中的 URL
         const isVideoTask =
           record.action === TASK_ACTION_GENERATE ||
@@ -579,9 +414,9 @@ export const getTaskLogsColumns = ({
           record.action === TASK_ACTION_FIRST_TAIL_GENERATE ||
           record.action === TASK_ACTION_REFERENCE_GENERATE ||
           record.action === TASK_ACTION_REMIX_GENERATE;
+        const isSuccess = record.status === 'SUCCESS';
         const resultUrl = record.result_url;
-        const hasResultUrl =
-          typeof resultUrl === 'string' && /^https?:\/\//.test(resultUrl);
+        const hasResultUrl = typeof resultUrl === 'string' && /^https?:\/\//.test(resultUrl);
         if (isSuccess && isVideoTask && hasResultUrl) {
           return (
             <a

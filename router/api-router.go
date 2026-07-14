@@ -253,15 +253,6 @@ func SetApiRouter(router *gin.Engine) {
 			}
 		}
 
-		jobsRoute := apiRouter.Group("/v1/jobs")
-		jobsRoute.Use(middleware.TokenAuth())
-		{
-			jobsCreateRoute := jobsRoute.Group("")
-			jobsCreateRoute.Use(middleware.SystemPerformanceCheck(), middleware.ModelRequestRateLimit(), middleware.Distribute())
-			jobsCreateRoute.POST("/createTask", controller.CreateJobTask)
-			jobsRoute.GET("/recordInfo", controller.GetJobRecordInfo)
-		}
-
 		redemptionRoute := apiRouter.Group("/redemption")
 		redemptionRoute.Use(middleware.AdminAuth())
 		{
@@ -297,6 +288,8 @@ func SetApiRouter(router *gin.Engine) {
 		systemInfoRoute.Use(middleware.RootAuth())
 		{
 			systemInfoRoute.GET("/instances", controller.ListSystemInstances)
+			systemInfoRoute.DELETE("/stale-instances", controller.DeleteStaleSystemInstances)
+			systemInfoRoute.DELETE("/instances/:node_name", controller.DeleteStaleSystemInstance)
 		}
 
 		dataRoute := apiRouter.Group("/data")

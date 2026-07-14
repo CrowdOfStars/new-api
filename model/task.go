@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"database/sql/driver"
 	"encoding/json"
-	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -134,61 +133,7 @@ func (t *Task) GetResultURL() string {
 	if t.PrivateData.ResultURL != "" {
 		return t.PrivateData.ResultURL
 	}
-	if t.Platform == constant.TaskPlatformImage {
-		if resultURL := imageTaskResultURL(t.Data); resultURL != "" {
-			return resultURL
-		}
-	}
 	return t.FailReason
-}
-
-func imageTaskResultURL(responseBody []byte) string {
-	var imageResp dto.ImageResponse
-	if err := common.Unmarshal(responseBody, &imageResp); err != nil {
-		return ""
-	}
-	for _, image := range imageResp.Data {
-		if source := imageTaskImageSource(image.Url, false); source != "" {
-			return source
-		}
-		if source := imageTaskImageSource(image.B64Json, true); source != "" {
-			return source
-		}
-	}
-	if len(imageResp.Metadata) == 0 {
-		return ""
-	}
-
-	var metadata struct {
-		ResultURLs      []string `json:"resultUrls"`
-		ResultURLsSnake []string `json:"result_urls"`
-	}
-	if err := common.Unmarshal(imageResp.Metadata, &metadata); err != nil {
-		return ""
-	}
-	for _, url := range append(metadata.ResultURLs, metadata.ResultURLsSnake...) {
-		if source := imageTaskImageSource(url, true); source != "" {
-			return source
-		}
-	}
-	return ""
-}
-
-func imageTaskImageSource(value string, allowRawBase64 bool) string {
-	source := strings.TrimSpace(value)
-	if source == "" {
-		return ""
-	}
-	lowerSource := strings.ToLower(source)
-	if strings.HasPrefix(lowerSource, "http://") ||
-		strings.HasPrefix(lowerSource, "https://") ||
-		strings.HasPrefix(lowerSource, "data:image/") {
-		return source
-	}
-	if allowRawBase64 {
-		return "data:image/png;base64," + source
-	}
-	return ""
 }
 
 // GenerateTaskID 生成对外暴露的 task_xxxx 格式 ID
