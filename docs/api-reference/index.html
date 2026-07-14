@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="New API 静态接口参考：OpenAI Chat、Claude Messages 与 Responses API。"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <title>API 参考 · New API</title>
+    <link rel="icon" href="./assets/logo.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <!--
+      Design assumptions
+      1. 当前版本聚焦文本生成，按协议而不是后端路由文件组织内容。
+      2. Chat 下区分 OpenAI 与 Claude；Responses API 作为独立大类。
+      3. 正文优先呈现可复制代码、鉴权方式和经过整理的参数表。
+      4. 页面不依赖 fetch，允许通过 file:// 直接打开，也可部署到任意静态服务器。
+    -->
+    <a class="skip-link" href="#content">跳到正文</a>
+
+    <header class="topbar">
+      <div class="brand-lockup">
+        <button class="icon-button mobile-only" id="menuButton" aria-label="打开接口目录" aria-expanded="false">
+          <span aria-hidden="true">☰</span>
+        </button>
+        <a class="brand" href="#overview" aria-label="New API 接口参考首页">
+          <img src="./assets/logo.svg" alt="New API" />
+          <span>New API</span>
+        </a>
+        <span class="product-divider" aria-hidden="true"></span>
+        <span class="product-name">开发者文档</span>
+        <span class="version-chip">v1</span>
+      </div>
+
+      <button class="search-trigger" id="searchButton" type="button" aria-haspopup="dialog">
+        <span class="search-icon" aria-hidden="true"></span>
+        <span>搜索文档、参数或路径</span>
+        <kbd>/</kbd>
+      </button>
+
+      <nav class="header-actions" aria-label="辅助导航">
+        <a href="https://github.com/QuantumNous/new-api" target="_blank" rel="noreferrer">GitHub</a>
+        <button class="icon-button" id="themeButton" type="button" aria-label="切换深浅主题">
+          <span id="themeIcon" aria-hidden="true">◐</span>
+        </button>
+      </nav>
+    </header>
+
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar" aria-label="接口目录">
+        <div class="sidebar-scroll">
+          <nav id="docsNav" aria-label="接口分组"></nav>
+        </div>
+        <div class="sidebar-footer">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span>5 个核心章节 · API v1</span>
+        </div>
+      </aside>
+
+      <div class="sidebar-backdrop" id="sidebarBackdrop" hidden></div>
+
+      <main id="content" tabindex="-1">
+        <div class="loading-state" id="loadingState">
+          <span class="loading-mark" aria-hidden="true"></span>
+          <p>正在整理开发者文档…</p>
+        </div>
+      </main>
+
+      <aside class="toc" id="toc" aria-label="本页目录"></aside>
+    </div>
+
+    <dialog class="command-dialog" id="searchDialog" aria-labelledby="searchTitle">
+      <div class="command-box">
+        <div class="command-input-wrap">
+          <span class="search-icon" aria-hidden="true"></span>
+          <label class="sr-only" for="searchInput" id="searchTitle">搜索接口</label>
+          <input
+            id="searchInput"
+            type="search"
+            autocomplete="off"
+            placeholder="例如：temperature、Claude、/v1/responses"
+          />
+          <kbd>ESC</kbd>
+        </div>
+        <div class="command-results" id="searchResults" role="listbox"></div>
+        <div class="command-footer">
+          <span><kbd>↑</kbd><kbd>↓</kbd> 选择</span>
+          <span><kbd>↵</kbd> 打开</span>
+          <span>共 <b id="searchCount">0</b> 条结果</span>
+        </div>
+      </div>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="./content.js"></script>
+    <script src="./app.js" defer></script>
+  </body>
+</html>
