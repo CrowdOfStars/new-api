@@ -88,6 +88,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		defer ws.Close()
 	}
+	finishModelMappedResponse := func() error { return nil }
+	if relayFormat != types.RelayFormatOpenAIRealtime {
+		finishModelMappedResponse = helper.WrapModelMappedResponseWriter(c)
+	}
 
 	defer func() {
 		if newAPIError != nil {
@@ -106,6 +110,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 					"error": newAPIError.ToOpenAIError(),
 				})
 			}
+		}
+		if err := finishModelMappedResponse(); err != nil {
+			logger.LogError(c, fmt.Sprintf("finish model mapped response failed: %s", err.Error()))
 		}
 	}()
 

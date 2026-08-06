@@ -76,6 +76,7 @@ import {
   getResponseTimeColor,
   renderAuditContent,
 } from '../../lib/format'
+import { canViewModelMappingDetails } from '../../lib/model-mapping-visibility'
 import {
   getLogTypeConfig,
   isPerCallBilling,
@@ -1043,8 +1044,12 @@ export function DetailsDialog(props: DetailsDialogProps) {
           />
         )}
 
-        {/* Model mapping */}
-        {other?.is_model_mapped && other?.upstream_model_name && (
+        {/* Model mapping (admin only) */}
+        {canViewModelMappingDetails(
+          props.isAdmin,
+          other?.is_model_mapped,
+          other?.upstream_model_name
+        ) && (
           <DetailSection label={t('Model Mapping')}>
             <DetailRow
               label={t('Request Model')}
@@ -1053,7 +1058,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
             />
             <DetailRow
               label={t('Actual Model')}
-              value={other.upstream_model_name}
+              value={other?.upstream_model_name}
               mono
             />
           </DetailSection>
